@@ -1,0 +1,278 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Noto+Sans:wght@400;500;600;700&family=Roboto:wght@300;400;500;700&display=swap');
+
+:root {
+  /* Official Indian Army & Govt of India Palette */
+  --army-crimson: #7b1113;
+  --army-crimson-dark: #580c0d;
+  --army-crimson-light: #9c1c1f;
+  --army-gold: #c59b27;
+  --army-gold-light: #e6b83b;
+  --army-olive: #243e2b;
+  --army-khaki: #f4eee1;
+  --gov-blue: #0b3b60;
+  --gov-blue-dark: #07233b;
+  
+  /* National Flag Colors */
+  --saffron: #FF9933;
+  --white: #FFFFFF;
+  --india-green: #138808;
+  --ashoka-blue: #000080;
+
+  /* Surfaces & Neutral Tones */
+  --bg-page: #f0f2f5;
+  --bg-surface: #ffffff;
+  --border-color: #d1d5db;
+  --border-dark: #9ca3af;
+  --text-dark: #111827;
+  --text-muted: #4b5563;
+  --text-light: #6b7280;
+
+  /* Status Colors (Official Portal Tone) */
+  --status-eligible-bg: #ecfdf5;
+  --status-eligible-border: #10b981;
+  --status-eligible-text: #065f46;
+  --status-reject-bg: #fef2f2;
+  --status-reject-border: #ef4444;
+  --status-reject-text: #991b1b;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html, body {
+  min-height: 100vh;
+  background-color: var(--bg-page);
+  color: var(--text-dark);
+  font-family: 'Roboto', 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Official Typography */
+.font-emblem {
+  font-family: 'Cinzel', serif;
+}
+
+/* Container */
+.gov-container {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+/* Government White Cards with Crisp Borders */
+.gov-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-top: 3px solid var(--army-crimson);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+}
+
+.gov-card-gold {
+  border-top: 3px solid var(--army-gold);
+}
+
+.gov-card-blue {
+  border-top: 3px solid var(--gov-blue);
+}
+
+.gov-card-header {
+  padding: 12px 18px;
+  background: #fafafa;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.gov-card-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--army-crimson-dark);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gov-card-body {
+  padding: 18px;
+}
+
+/* Official Portal Buttons */
+.gov-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 18px;
+  background: linear-gradient(180deg, #8b1417 0%, #680c0e 100%);
+  color: #ffffff;
+  border: 1px solid #4a0608;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+  transition: all 0.15s ease;
+}
+
+.gov-btn-primary:hover {
+  background: linear-gradient(180deg, #9b191c 0%, #7a0f12 100%);
+}
+
+.gov-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 7px 16px;
+  background: #f8fafc;
+  color: var(--text-dark);
+  border: 1px solid var(--border-dark);
+  border-radius: 4px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.gov-btn-secondary:hover {
+  background: #e2e8f0;
+}
+
+.gov-btn-gold {
+  background: linear-gradient(180deg, #d4a029 0%, #b3821a 100%);
+  color: #111;
+  border: 1px solid #8d6411;
+}
+
+.gov-btn-gold:hover {
+  background: linear-gradient(180deg, #e4ad32 0%, #c08d20 100%);
+}
+
+/* Official Government Tables */
+.gov-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+}
+
+.gov-table th {
+  background: #f1f5f9;
+  color: #1e293b;
+  font-weight: 700;
+  text-align: left;
+  padding: 10px 14px;
+  border: 1px solid #cbd5e1;
+  text-transform: uppercase;
+  font-size: 0.76rem;
+  letter-spacing: 0.04em;
+}
+
+.gov-table td {
+  padding: 10px 14px;
+  border: 1px solid #e2e8f0;
+  color: #1f2937;
+  vertical-align: middle;
+}
+
+.gov-table tr:nth-child(even) td {
+  background: #f8fafc;
+}
+
+.gov-table tr:hover td {
+  background: #f1f5f9;
+}
+
+/* Form Controls (Official Look) */
+.gov-label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 5px;
+}
+
+.gov-input, .gov-select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #9ca3af;
+  border-radius: 3px;
+  font-size: 0.9rem;
+  color: #111827;
+  background: #ffffff;
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+
+.gov-input:focus, .gov-select:focus {
+  border-color: var(--army-crimson);
+  box-shadow: 0 0 0 2px rgba(123, 17, 19, 0.15);
+}
+
+/* Official Stamp Badges */
+.stamp-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 3px;
+}
+
+.stamp-eligible {
+  background: var(--status-eligible-bg);
+  color: var(--status-eligible-text);
+  border: 1px solid var(--status-eligible-border);
+}
+
+.stamp-rejected {
+  background: var(--status-reject-bg);
+  color: var(--status-reject-text);
+  border: 1px solid var(--status-reject-border);
+}
+
+.stamp-blue {
+  background: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #93c5fd;
+}
+
+.stamp-gold {
+  background: #fffbeb;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+
+/* Notice Ticker Animation */
+@keyframes ticker {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+
+.ticker-content {
+  display: inline-block;
+  white-space: nowrap;
+  animation: ticker 35s linear infinite;
+}
+
+.ticker-content:hover {
+  animation-play-state: paused;
+}
+
+/* Printable Admit Card Formats */
+.admit-watermark {
+  background-image: radial-gradient(circle, rgba(123, 17, 19, 0.04) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
