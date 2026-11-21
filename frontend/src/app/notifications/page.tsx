@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase, envConfigured } from '@/lib/supabase';
+import Link from 'next/link';
 import CandidateNav from '@/components/CandidateNav';
 import NotificationsTable, { NotificationRow } from '@/components/NotificationsTable';
 import { useRole } from '@/lib/useRole';
@@ -14,25 +14,22 @@ export default function CandidateNotificationsPage() {
 
   useEffect(() => {
     if (!authorized) return;
-    if (!envConfigured) {
-      setLoading(false);
-      return;
-    }
 
     async function loadNotifications() {
       setLoading(true);
       setError(null);
-      const { data, error: fetchErr } = await supabase
-        .from('notifications')
-        .select('*, branches(name), eligibility_rules(*)')
-        .order('id', { ascending: true });
-
-      if (fetchErr) {
-        setError(fetchErr.message);
-      } else {
-        setNotifications((data as unknown as NotificationRow[]) ?? []);
+      try {
+        const res = await fetch('/api/officer/notifications');
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to load notifications.');
+        }
+        setNotifications((data.notifications as NotificationRow[]) ?? []);
+      } catch (err: any) {
+        setError(err.message || 'Error loading recruitments.');
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
 
     loadNotifications();
@@ -44,19 +41,27 @@ export default function CandidateNotificationsPage() {
     <>
       <CandidateNav />
       <div className="container page">
-        <h1>Open Recruitments</h1>
-        <p className="page-desc">Current defence commission notifications and eligibility rules.</p>
+        <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+          <div>
+            <h1>Open Commission Notifications</h1>
+            <p className="page-desc">
+              Current active defence recruitment notifications, vacancies, cutoff dates, and eligibility rules.
+            </p>
+          </div>
+          <div>
+            <Link href="/apply" className="btn btn-primary">
+              Proceed to Apply
+            </Link>
+          </div>
+        </div>
 
-        {!envConfigured && (
-          <p className="error">
-            Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local to use this application.
-          </p>
-        )}
+        {error && <div className="error mb-16">{error}</div>}
 
-        {loading && <p>Loading...</p>}
-        {error && <p className="error">{error}</p>}
-
-        {!loading && !error && envConfigured && (
+        {loading ? (
+          <div className="panel" style={{ textAlign: 'center', padding: '36px' }}>
+            <span style={{ color: 'var(--c-text-muted)' }}>Loading active commission notifications...</span>
+          </div>
+        ) : (
           <div className="section">
             <NotificationsTable notifications={notifications} canEdit={false} />
           </div>

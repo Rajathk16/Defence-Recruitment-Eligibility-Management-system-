@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase, envConfigured } from '@/lib/supabase';
 import CandidateNav from '@/components/CandidateNav';
 import { useRole } from '@/lib/useRole';
 
@@ -39,28 +38,29 @@ export default function CandidateApplyPage() {
   useEffect(() => {
     if (!authorized) return;
 
-    // Check sessionStorage
     const storedId = sessionStorage.getItem('candidateId');
     const storedEmail = sessionStorage.getItem('candidateEmail');
+    const storedName = sessionStorage.getItem('candidateName');
 
     if (storedId && storedEmail) {
       setCandidateId(parseInt(storedId, 10));
       setCandidateEmail(storedEmail);
+      if (storedName) setCandidateName(storedName);
     }
 
-    // Load notifications
+    // Load active notifications
     async function loadNotifications() {
-      if (!envConfigured) return;
-      const { data } = await supabase
-        .from('notifications')
-        .select('id, notification_number, title')
-        .order('id', { ascending: false });
-
-      if (data) {
-        setNotifications(data);
-        if (data.length > 0 && !selectedNotification) {
-          setSelectedNotification(String(data[0].id));
+      try {
+        const res = await fetch('/api/officer/notifications');
+        const data = await res.json();
+        if (data.notifications && data.notifications.length > 0) {
+          setNotifications(data.notifications);
+          if (!selectedNotification) {
+            setSelectedNotification(String(data.notifications[0].id));
+          }
         }
+      } catch {
+        // ignore
       }
     }
 
@@ -75,24 +75,23 @@ export default function CandidateApplyPage() {
     setLookupLoading(true);
 
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, full_name, email')
-        .eq('email', inputEmail.trim())
-        .eq('role', 'CANDIDATE')
-        .maybeSingle();
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'candidate', email: inputEmail.trim() }),
+      });
 
-      if (error) throw error;
-      if (!data) {
-        setLookupError('No candidate profile found with this email. Please register first.');
-        return;
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to locate candidate profile.');
       }
 
-      setCandidateId(data.id);
-      setCandidateEmail(data.email);
-      setCandidateName(data.full_name);
-      sessionStorage.setItem('candidateId', String(data.id));
-      sessionStorage.setItem('candidateEmail', data.email);
+      setCandidateId(data.candidate.id);
+      setCandidateEmail(data.candidate.email);
+      setCandidateName(data.candidate.full_name);
+      sessionStorage.setItem('candidateId', String(data.candidate.id));
+      sessionStorage.setItem('candidateEmail', data.candidate.email);
+      sessionStorage.setItem('candidateName', data.candidate.full_name);
     } catch (err: any) {
       setLookupError(err.message || 'Lookup failed.');
     } finally {
@@ -103,6 +102,7 @@ export default function CandidateApplyPage() {
   function handleSwitchCandidate() {
     sessionStorage.removeItem('candidateId');
     sessionStorage.removeItem('candidateEmail');
+    sessionStorage.removeItem('candidateName');
     setCandidateId(null);
     setCandidateEmail('');
     setCandidateName('');
@@ -115,34 +115,29 @@ export default function CandidateApplyPage() {
     setSubmitError(null);
     setResult(null);
 
-    if (!candidateId || !selectedNotification) {
-      setSubmitError('Missing candidate or notification selection.');
+    if (!selectedNotification) {
+      setSubmitError('Please select a recruitment notification.');
       return;
     }
 
     setSubmitting(true);
     try {
-      const { data, error } = await supabase
-        .from('applications')
-        .insert({
-          candidate_id: candidateId,
-          notification_id: parseInt(selectedNotification, 10),
-        })
-        .select('id, status, remarks')
-        .single();
+      const res = await fetch('/api/candidate/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          notificationId: selectedNotification,
+        }),
+      });
 
-      if (error) throw error;
-      setResult(data as ApplicationResult);
-    } catch (err: any) {
-      if (
-        err.code === '23505' ||
-        err.message?.toLowerCase().includes('duplicate') ||
-        err.message?.toLowerCase().includes('unique')
-      ) {
-        setSubmitError('This candidate has already submitted an application for this notification.');
-      } else {
-        setSubmitError(err.message || 'Failed to submit application.');
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to submit application.');
       }
+
+      setResult(data.application as ApplicationResult);
+    } catch (err: any) {
+      setSubmitError(err.message || 'Failed to submit application.');
     } finally {
       setSubmitting(false);
     }
@@ -152,27 +147,29 @@ export default function CandidateApplyPage() {
     <>
       <CandidateNav />
       <div className="container page">
-        <h1>Apply for Notification</h1>
-        <p className="page-desc">Submit your application to trigger automated eligibility screening.</p>
-
-        {!envConfigured && (
-          <p className="error">
-            Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local to use this application.
+        <div className="page-header">
+          <h1>Apply for Commission Notification</h1>
+          <p className="page-desc">
+            Submit your application to trigger automated database eligibility screening against rules.
           </p>
-        )}
+        </div>
 
         {/* Step 1: Candidate identification if none stored */}
         {!candidateId ? (
-          <div className="section" style={{ background: 'white', padding: '20px', border: '1px solid #ddd' }}>
-            <h2>Find your candidate profile</h2>
+          <div className="panel panel-accent" style={{ maxWidth: '600px' }}>
+            <div className="panel-header">
+              <span className="panel-title">Identify Candidate Profile</span>
+            </div>
             <form onSubmit={handleFindMe}>
               <div className="form-group">
-                <label htmlFor="registered-email">Your registered email</label>
+                <label htmlFor="registered-email">
+                  Registered Email Address <span className="required-star">*</span>
+                </label>
                 <input
                   id="registered-email"
                   type="email"
                   required
-                  placeholder="Enter the email you registered with"
+                  placeholder="Enter the email address you registered with"
                   value={inputEmail}
                   onChange={(e) => setInputEmail(e.target.value)}
                 />
@@ -180,33 +177,38 @@ export default function CandidateApplyPage() {
 
               <div className="mt-16">
                 <button type="submit" className="btn btn-primary" disabled={lookupLoading}>
-                  {lookupLoading ? 'Finding...' : 'Find me'}
+                  {lookupLoading ? 'Locating Record...' : 'Verify & Load Profile'}
                 </button>
               </div>
 
-              {lookupError && <p className="error mt-8">{lookupError}</p>}
+              {lookupError && <div className="error mt-16">{lookupError}</div>}
             </form>
           </div>
         ) : (
           /* Step 2: Candidate is identified -> Apply */
-          <div className="section">
-            <div style={{ background: '#f0f0f0', padding: '12px 16px', borderBottom: '1px solid #ddd', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="panel panel-accent">
+            <div className="panel-header">
+              <span className="panel-title">Commission Application Form</span>
+            </div>
+
+            <div className="info-banner">
               <div>
-                Applying as: <strong>{candidateEmail}</strong> {candidateName ? `(${candidateName})` : ''} - Candidate #{candidateId}
+                Applying as: <strong>{candidateEmail}</strong> {candidateName ? `(${candidateName})` : ''} &bull; Candidate <strong>#{candidateId}</strong>
               </div>
               <button
                 type="button"
-                className="btn btn-secondary"
-                style={{ padding: '3px 8px', fontSize: '12px' }}
+                className="btn btn-secondary btn-sm"
                 onClick={handleSwitchCandidate}
               >
-                Use different email
+                Use Different Email
               </button>
             </div>
 
             <form onSubmit={handleApply}>
               <div className="form-group">
-                <label htmlFor="notification-select">Notification</label>
+                <label htmlFor="notification-select">
+                  Select Recruitment Notification <span className="required-star">*</span>
+                </label>
                 <select
                   id="notification-select"
                   required
@@ -227,25 +229,37 @@ export default function CandidateApplyPage() {
 
               <div className="mt-16">
                 <button type="submit" className="btn btn-primary" disabled={submitting}>
-                  {submitting ? 'Submitting...' : 'Submit application'}
+                  {submitting ? 'Screening Application...' : 'Submit Application'}
                 </button>
               </div>
 
-              {submitError && <p className="error mt-8">{submitError}</p>}
+              {submitError && <div className="error mt-16">{submitError}</div>}
 
               {result && (
-                <div className="check-result mt-16">
-                  <h3>Screening result (Trigger evaluation)</h3>
-                  <p>Application ID: <strong>{result.id}</strong></p>
-                  <p className="mt-8">
-                    Status:{' '}
-                    <span className={result.status === 'ELIGIBLE' ? 'eligible' : 'rejected'}>
-                      {result.status}
+                <div className="check-result mt-24">
+                  <h3 style={{ fontSize: '1.05rem', color: 'var(--c-olive-deep)', marginBottom: '12px' }}>
+                    Automated Screening Result (Database Trigger Evaluation)
+                  </h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '8px 16px', fontSize: '14px' }}>
+                    <strong>Application Reference:</strong>
+                    <span>#{result.id}</span>
+
+                    <strong>Eligibility Status:</strong>
+                    <span>
+                      <span
+                        className={`status-pill ${
+                          result.status === 'ELIGIBLE' ? 'status-eligible' : 'status-rejected'
+                        }`}
+                      >
+                        {result.status}
+                      </span>
                     </span>
-                  </p>
-                  <p className="mt-8">
-                    Remarks: <strong>{result.remarks || 'All criteria satisfied.'}</strong>
-                  </p>
+
+                    <strong>Evaluation Remarks:</strong>
+                    <span>
+                      <strong>{result.remarks || 'All physical and educational criteria satisfied.'}</strong>
+                    </span>
+                  </div>
                 </div>
               )}
             </form>

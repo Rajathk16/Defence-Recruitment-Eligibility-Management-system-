@@ -183,3 +183,25 @@ INSERT INTO branches (code, name) VALUES
     ('NAVY', 'Indian Navy'),            -- 2
     ('AIR_FORCE', 'Indian Air Force'),  -- 3
     ('COAST_GUARD', 'Indian Coast Guard'); -- 4
+
+
+-- 5. ROW LEVEL SECURITY (RLS) & RBAC POLICIES (OPTIONAL / PRODUCTION)
+-- Enables strict database-level authorization matching application RBAC:
+-- - CANDIDATE: Access only their own profiles, physical details, education, and applications.
+-- - OFFICER / ADMIN: Full administrative access to notifications, scores, medical exams, and merit list.
+
+-- ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE physical_details ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE education ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE applications ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE test_scores ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE medical_exams ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE merit_list ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE eligibility_rules ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE branches ENABLE ROW LEVEL SECURITY;
+
+-- Notifications, Branches & Eligibility Rules are publicly readable by all candidates:
+-- CREATE POLICY "Public read for branches" ON branches FOR SELECT USING (true);
+-- CREATE POLICY "Public read for notifications" ON notifications FOR SELECT USING (true);
+-- CREATE POLICY "Public read for eligibility_rules" ON eligibility_rules FOR SELECT USING (true);

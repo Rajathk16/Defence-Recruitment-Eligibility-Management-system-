@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase, envConfigured } from '@/lib/supabase';
 import OfficerNav from '@/components/OfficerNav';
 import { useRole } from '@/lib/useRole';
 
@@ -39,10 +38,17 @@ interface RankedCandidate {
   is_selected: boolean;
 }
 
-function statusClass(status: string): string {
+function getStatusBadgeClass(status: string): string {
   if (status === 'ELIGIBLE') return 'status-eligible';
   if (status === 'REJECTED') return 'status-rejected';
-  if (status === 'SELECTED') return 'status-merit_listed';
+  if (status === 'SELECTED') return 'status-selected';
+  return 'status-pending';
+}
+
+function getMedicalBadgeClass(status: string | null): string {
+  if (status === 'FIT') return 'status-eligible';
+  if (status === 'UNFIT') return 'status-rejected';
+  if (status === 'PENDING') return 'status-pending';
   return '';
 }
 
@@ -85,57 +91,41 @@ export default function OfficerPage() {
   const [meritError, setMeritError] = useState<string | null>(null);
 
   async function loadData() {
-    if (!envConfigured) {
-      setSummaryLoading(false);
-      return;
-    }
     setSummaryLoading(true);
+    setSummaryError(null);
 
-    const [sumRes, appsRes, notifRes] = await Promise.all([
-      supabase.from('v_application_summary').select('*').order('application_id'),
-      supabase
-        .from('applications')
-        .select('id, profiles(full_name), notifications(notification_number)')
-        .order('id'),
-      supabase
-        .from('notifications')
-        .select('id, notification_number, title, vacancies')
-        .order('id'),
-    ]);
-
-    if (sumRes.error) {
-      setSummaryError(sumRes.error.message);
-    } else {
-      setSummary(sumRes.data ?? []);
-    }
-
-    if (appsRes.data) {
-      const mapped = appsRes.data.map((a: any) => ({
-        id: a.id,
-        candidate_name: Array.isArray(a.profiles) ? a.profiles[0]?.full_name : a.profiles?.full_name,
-        notification_number: Array.isArray(a.notifications)
-          ? a.notifications[0]?.notification_number
-          : a.notifications?.notification_number,
-      }));
-      setAppOptions(mapped);
-      if (mapped.length > 0 && !scoreAppId) setScoreAppId(String(mapped[0].id));
-      if (mapped.length > 0 && !medAppId) setMedAppId(String(mapped[0].id));
-    }
-
-    if (notifRes.data) {
-      setNotifications(notifRes.data);
-      if (notifRes.data.length > 0 && !meritNotifId) {
-        setMeritNotifId(String(notifRes.data[0].id));
+    try {
+      const res = await fetch('/api/officer/summary');
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to load officer records.');
       }
-    }
 
-    setSummaryLoading(false);
+      setSummary(data.summary ?? []);
+      setAppOptions(data.appOptions ?? []);
+      if (data.appOptions?.length > 0 && !scoreAppId) {
+        setScoreAppId(String(data.appOptions[0].id));
+      }
+      if (data.appOptions?.length > 0 && !medAppId) {
+        setMedAppId(String(data.appOptions[0].id));
+      }
+
+      setNotifications(data.notifications ?? []);
+      if (data.notifications?.length > 0 && !meritNotifId) {
+        setMeritNotifId(String(data.notifications[0].id));
+      }
+    } catch (err: any) {
+      setSummaryError(err.message || 'Error loading records.');
+    } finally {
+      setSummaryLoading(false);
+    }
   }
 
   useEffect(() => {
     if (authorized) {
       loadData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorized]);
 
   if (!authorized) return null;
@@ -146,28 +136,35 @@ export default function OfficerPage() {
     setScoreSuccess(null);
 
     if (!scoreAppId) {
-      setScoreError('Please select an application.');
+      setScoreError('Please select a candidate application.');
       return;
     }
 
     setScoreSaving(true);
     try {
-      const { error } = await supabase.from('test_scores').upsert({
-        application_id: parseInt(scoreAppId, 10),
-        written_marks: parseFloat(writtenMarks),
-        pft_score: parseFloat(pftScore),
-        interview_score: parseFloat(interviewScore),
+      const res = await fetch('/api/officer/scores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          applicationId: scoreAppId,
+          writtenMarks,
+          pftScore,
+          interviewScore,
+        }),
       });
 
-      if (error) throw error;
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to record test scores.');
+      }
 
-      setScoreSuccess('Test scores recorded successfully.');
+      setScoreSuccess('Official test scores recorded successfully.');
       setWrittenMarks('');
       setPftScore('');
       setInterviewScore('');
       loadData();
     } catch (err: any) {
-      setScoreError(err.message || 'Failed to save test scores.');
+      setScoreError(err.message || 'Operation failed.');
     } finally {
       setScoreSaving(false);
     }
@@ -185,23 +182,30 @@ export default function OfficerPage() {
 
     setMedSaving(true);
     try {
-      const { error } = await supabase.from('medical_exams').upsert({
-        application_id: parseInt(medAppId, 10),
-        board_location: boardLocation.trim(),
-        exam_date: examDate,
-        status: medStatus,
-        notes: notes.trim() || null,
+      const res = await fetch('/api/officer/medical', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          applicationId: medAppId,
+          boardLocation,
+          examDate,
+          status: medStatus,
+          notes,
+        }),
       });
 
-      if (error) throw error;
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to record medical examination.');
+      }
 
-      setMedSuccess('Medical exam result recorded successfully.');
+      setMedSuccess('Medical fitness board examination recorded successfully.');
       setBoardLocation('');
       setExamDate('');
       setNotes('');
       loadData();
     } catch (err: any) {
-      setMedError(err.message || 'Failed to save medical exam result.');
+      setMedError(err.message || 'Operation failed.');
     } finally {
       setMedSaving(false);
     }
@@ -213,104 +217,27 @@ export default function OfficerPage() {
     setRankedList([]);
 
     if (!meritNotifId) {
-      setMeritError('Please select a notification.');
+      setMeritError('Please select a recruitment notification.');
       return;
     }
 
     setMeritLoading(true);
     try {
-      const notif = notifications.find((n) => n.id === parseInt(meritNotifId, 10));
-      if (!notif) throw new Error('Notification not found.');
+      const res = await fetch('/api/officer/merit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          notificationId: meritNotifId,
+        }),
+      });
 
-      const { data: apps, error: fetchErr } = await supabase
-        .from('applications')
-        .select(`
-          id,
-          candidate_id,
-          status,
-          profiles (full_name),
-          test_scores (written_marks, pft_score, interview_score),
-          medical_exams (status)
-        `)
-        .eq('notification_id', notif.id)
-        .in('status', ['ELIGIBLE', 'SELECTED']);
-
-      if (fetchErr) throw fetchErr;
-      if (!apps || apps.length === 0) {
-        setMeritMsg('No eligible applications found for this notification.');
-        setMeritLoading(false);
-        return;
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to generate merit list.');
       }
 
-      const validApplicants: RankedCandidate[] = [];
-      for (const app of apps as any[]) {
-        const med = Array.isArray(app.medical_exams) ? app.medical_exams[0] : app.medical_exams;
-        if (med?.status === 'UNFIT') continue;
-
-        const ts = Array.isArray(app.test_scores) ? app.test_scores[0] : app.test_scores;
-        if (!ts || ts.written_marks == null || ts.pft_score == null || ts.interview_score == null) {
-          continue;
-        }
-
-        const score =
-          Math.round(
-            (Number(ts.written_marks) * 0.4 +
-              Number(ts.pft_score) * 0.2 +
-              Number(ts.interview_score) * 0.4) *
-              100
-          ) / 100;
-
-        const name = Array.isArray(app.profiles) ? app.profiles[0]?.full_name : app.profiles?.full_name;
-
-        validApplicants.push({
-          application_id: app.id,
-          full_name: name || `Applicant #${app.id}`,
-          score,
-          rank: 0,
-          is_selected: false,
-        });
-      }
-
-      if (validApplicants.length === 0) {
-        setMeritMsg('No candidates with complete scores and fit medical status.');
-        setMeritLoading(false);
-        return;
-      }
-
-      validApplicants.sort((a, b) => b.score - a.score);
-
-      let rank = 1;
-      for (let i = 0; i < validApplicants.length; i++) {
-        if (i > 0 && validApplicants[i].score < validApplicants[i - 1].score) {
-          rank++;
-        }
-        validApplicants[i].rank = rank;
-        validApplicants[i].is_selected = rank <= notif.vacancies;
-      }
-
-      const appIds = validApplicants.map((v) => v.application_id);
-      await supabase.from('merit_list').delete().in('application_id', appIds);
-
-      const meritRows = validApplicants.map((v) => ({
-        application_id: v.application_id,
-        composite_score: v.score,
-        rank_order: v.rank,
-        is_selected: v.is_selected,
-      }));
-      const { error: insertErr } = await supabase.from('merit_list').insert(meritRows);
-      if (insertErr) throw insertErr;
-
-      const selectedIds = validApplicants.filter((v) => v.is_selected).map((v) => v.application_id);
-      if (selectedIds.length > 0) {
-        await supabase.from('applications').update({ status: 'SELECTED' }).in('id', selectedIds);
-      }
-      const unselectedIds = validApplicants.filter((v) => !v.is_selected).map((v) => v.application_id);
-      if (unselectedIds.length > 0) {
-        await supabase.from('applications').update({ status: 'ELIGIBLE' }).in('id', unselectedIds);
-      }
-
-      setRankedList(validApplicants);
-      setMeritMsg(`Merit list generated. ${validApplicants.length} candidate(s) ranked.`);
+      setRankedList(data.rankedList ?? []);
+      setMeritMsg(data.message || 'Merit list generated.');
       loadData();
     } catch (err: any) {
       setMeritError(err.message || 'Failed to generate merit list.');
@@ -323,57 +250,84 @@ export default function OfficerPage() {
     <>
       <OfficerNav />
       <div className="container page">
-        <h1>Officer Panel</h1>
-        <p className="page-desc">Manage scores, record medical examinations, and generate merit lists.</p>
-
-        {!envConfigured && (
-          <p className="error">
-            Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local to use this application.
+        <div className="page-header">
+          <h1>Officer Administration Console</h1>
+          <p className="page-desc">
+            Recruitment candidate screening overview, test marks evaluation, medical board outcomes, and merit ranking.
           </p>
-        )}
+        </div>
 
         {/* Section 1: Summary Table */}
-        <div className="section">
-          <h2>Application summary (v_application_summary)</h2>
-          {summaryLoading && <p>Loading summary...</p>}
-          {summaryError && <p className="error">{summaryError}</p>}
+        <div className="panel panel-accent">
+          <div className="panel-header">
+            <span className="panel-title">Application Overview (v_application_summary)</span>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={loadData}
+              disabled={summaryLoading}
+            >
+              Refresh Table
+            </button>
+          </div>
+
+          {summaryLoading && (
+            <div style={{ textAlign: 'center', padding: '24px', color: 'var(--c-text-muted)' }}>
+              Loading candidate applications summary...
+            </div>
+          )}
+
+          {summaryError && <div className="error mb-16">{summaryError}</div>}
+
           {!summaryLoading && !summaryError && (
             <div className="table-wrap">
               <table>
                 <thead>
                   <tr>
                     <th>App ID</th>
-                    <th>Candidate</th>
+                    <th>Candidate Name</th>
                     <th>Notification</th>
-                    <th>Age</th>
+                    <th>Age at Cutoff</th>
                     <th>Status</th>
                     <th>Remarks</th>
                     <th>Written</th>
                     <th>PFT</th>
                     <th>Interview</th>
-                    <th>Medical</th>
+                    <th>Medical Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {summary.length === 0 ? (
                     <tr>
-                      <td colSpan={10}>No records.</td>
+                      <td colSpan={10} style={{ textAlign: 'center', padding: '24px', color: 'var(--c-text-muted)' }}>
+                        No application records found.
+                      </td>
                     </tr>
                   ) : (
                     summary.map((row) => (
                       <tr key={row.application_id}>
-                        <td>{row.application_id}</td>
+                        <td><strong>#{row.application_id}</strong></td>
                         <td>{row.full_name}</td>
                         <td>{row.notification_number}</td>
-                        <td>{row.age_at_cutoff}</td>
+                        <td>{row.age_at_cutoff} yrs</td>
                         <td>
-                          <span className={statusClass(row.status)}>{row.status}</span>
+                          <span className={`status-pill ${getStatusBadgeClass(row.status)}`}>
+                            {row.status}
+                          </span>
                         </td>
-                        <td>{row.remarks ?? '-'}</td>
-                        <td>{row.written_marks != null ? row.written_marks : '-'}</td>
-                        <td>{row.pft_score != null ? row.pft_score : '-'}</td>
-                        <td>{row.interview_score != null ? row.interview_score : '-'}</td>
-                        <td>{row.medical_status ?? '-'}</td>
+                        <td style={{ maxWidth: '200px' }}>{row.remarks ?? '-'}</td>
+                        <td>{row.written_marks != null ? `${row.written_marks}` : '-'}</td>
+                        <td>{row.pft_score != null ? `${row.pft_score}` : '-'}</td>
+                        <td>{row.interview_score != null ? `${row.interview_score}` : '-'}</td>
+                        <td>
+                          {row.medical_status ? (
+                            <span className={`status-pill ${getMedicalBadgeClass(row.medical_status)}`}>
+                              {row.medical_status}
+                            </span>
+                          ) : (
+                            '-'
+                          )}
+                        </td>
                       </tr>
                     ))
                   )}
@@ -384,11 +338,16 @@ export default function OfficerPage() {
         </div>
 
         {/* Section 2: Enter Test Scores */}
-        <div className="section">
-          <h2>Enter test scores</h2>
+        <div className="panel panel-accent">
+          <div className="panel-header">
+            <span className="panel-title">Record Examination & Interview Scores</span>
+          </div>
+
           <form onSubmit={handleSaveScores}>
             <div className="form-group">
-              <label htmlFor="score-app-select">Application</label>
+              <label htmlFor="score-app-select">
+                Target Application Reference <span className="required-star">*</span>
+              </label>
               <select
                 id="score-app-select"
                 required
@@ -405,7 +364,9 @@ export default function OfficerPage() {
 
             <div className="row">
               <div className="col">
-                <label htmlFor="written-marks">Written marks (0 to 100)</label>
+                <label htmlFor="written-marks">
+                  Written Marks (0 to 100) <span className="required-star">*</span>
+                </label>
                 <input
                   id="written-marks"
                   type="number"
@@ -413,12 +374,15 @@ export default function OfficerPage() {
                   min="0"
                   max="100"
                   required
+                  placeholder="e.g. 78.50"
                   value={writtenMarks}
                   onChange={(e) => setWrittenMarks(e.target.value)}
                 />
               </div>
               <div className="col">
-                <label htmlFor="pft-score">PFT score (0 to 100)</label>
+                <label htmlFor="pft-score">
+                  Physical Fitness Test (0 to 100) <span className="required-star">*</span>
+                </label>
                 <input
                   id="pft-score"
                   type="number"
@@ -426,12 +390,15 @@ export default function OfficerPage() {
                   min="0"
                   max="100"
                   required
+                  placeholder="e.g. 85.00"
                   value={pftScore}
                   onChange={(e) => setPftScore(e.target.value)}
                 />
               </div>
               <div className="col">
-                <label htmlFor="interview-score">Interview score (0 to 100)</label>
+                <label htmlFor="interview-score">
+                  SSB Interview Score (0 to 100) <span className="required-star">*</span>
+                </label>
                 <input
                   id="interview-score"
                   type="number"
@@ -439,6 +406,7 @@ export default function OfficerPage() {
                   min="0"
                   max="100"
                   required
+                  placeholder="e.g. 82.00"
                   value={interviewScore}
                   onChange={(e) => setInterviewScore(e.target.value)}
                 />
@@ -447,21 +415,26 @@ export default function OfficerPage() {
 
             <div className="mt-16">
               <button type="submit" className="btn btn-primary" disabled={scoreSaving}>
-                {scoreSaving ? 'Saving...' : 'Save test scores'}
+                {scoreSaving ? 'Saving Scores...' : 'Save Test Scores'}
               </button>
             </div>
 
-            {scoreError && <p className="error mt-8">{scoreError}</p>}
-            {scoreSuccess && <p className="success mt-8">{scoreSuccess}</p>}
+            {scoreError && <div className="error mt-16">{scoreError}</div>}
+            {scoreSuccess && <div className="success mt-16">{scoreSuccess}</div>}
           </form>
         </div>
 
         {/* Section 3: Record Medical Exams */}
-        <div className="section">
-          <h2>Record medical exam</h2>
+        <div className="panel panel-accent">
+          <div className="panel-header">
+            <span className="panel-title">Record Medical Fitness Examination</span>
+          </div>
+
           <form onSubmit={handleSaveMedical}>
             <div className="form-group">
-              <label htmlFor="med-app-select">Application</label>
+              <label htmlFor="med-app-select">
+                Target Application Reference <span className="required-star">*</span>
+              </label>
               <select
                 id="med-app-select"
                 required
@@ -478,18 +451,22 @@ export default function OfficerPage() {
 
             <div className="row">
               <div className="col">
-                <label htmlFor="board-location">Board location</label>
+                <label htmlFor="board-location">
+                  Medical Board Location <span className="required-star">*</span>
+                </label>
                 <input
                   id="board-location"
                   type="text"
                   required
-                  placeholder="e.g. Military Hospital, Delhi"
+                  placeholder="e.g. Military Hospital, Delhi Cantt"
                   value={boardLocation}
                   onChange={(e) => setBoardLocation(e.target.value)}
                 />
               </div>
               <div className="col">
-                <label htmlFor="exam-date">Exam date</label>
+                <label htmlFor="exam-date">
+                  Examination Date <span className="required-star">*</span>
+                </label>
                 <input
                   id="exam-date"
                   type="date"
@@ -499,25 +476,27 @@ export default function OfficerPage() {
                 />
               </div>
               <div className="col">
-                <label htmlFor="med-status">Status</label>
+                <label htmlFor="med-status">
+                  Fitness Decision <span className="required-star">*</span>
+                </label>
                 <select
                   id="med-status"
                   value={medStatus}
                   onChange={(e) => setMedStatus(e.target.value)}
                 >
-                  <option value="FIT">FIT</option>
-                  <option value="UNFIT">UNFIT</option>
-                  <option value="PENDING">PENDING</option>
+                  <option value="FIT">FIT (Cleared Medicals)</option>
+                  <option value="UNFIT">UNFIT (Permanent Disqualification)</option>
+                  <option value="PENDING">PENDING (Review Appeal)</option>
                 </select>
               </div>
             </div>
 
-            <div className="form-group">
-              <label htmlFor="notes">Notes (optional)</label>
+            <div className="form-group" style={{ marginTop: '14px' }}>
+              <label htmlFor="notes">Clinical Findings / Notes (Optional)</label>
               <input
                 id="notes"
                 type="text"
-                placeholder="e.g. SHAPE-1 standard cleared"
+                placeholder="e.g. SHAPE-1 standard cleared, visual acuity 6/6"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
               />
@@ -525,25 +504,28 @@ export default function OfficerPage() {
 
             <div className="mt-16">
               <button type="submit" className="btn btn-primary" disabled={medSaving}>
-                {medSaving ? 'Saving...' : 'Save medical result'}
+                {medSaving ? 'Saving Medical Result...' : 'Save Medical Result'}
               </button>
             </div>
 
-            {medError && <p className="error mt-8">{medError}</p>}
-            {medSuccess && <p className="success mt-8">{medSuccess}</p>}
+            {medError && <div className="error mt-16">{medError}</div>}
+            {medSuccess && <div className="success mt-16">{medSuccess}</div>}
           </form>
         </div>
 
         {/* Section 4: Generate Merit List */}
-        <div className="section">
-          <h2>Generate merit list (TypeScript calculation)</h2>
-          <p className="page-desc" style={{ marginBottom: '12px' }}>
-            Formula: composite = (written * 0.4) + (pft * 0.2) + (interview * 0.4). Medically UNFIT or incomplete candidates are excluded. Dense rank is applied and vacancies are allocated.
+        <div className="panel panel-accent">
+          <div className="panel-header">
+            <span className="panel-title">Merit List Computation & Selection Allocation</span>
+          </div>
+
+          <p className="page-desc" style={{ marginBottom: '16px' }}>
+            Formula: <code>Composite Score = (Written &times; 0.4) + (PFT &times; 0.2) + (Interview &times; 0.4)</code>. Medically UNFIT or incomplete candidates are automatically disqualified. Dense rank ordering is applied, and vacancies are allocated to top-ranked candidates.
           </p>
 
           <div className="row" style={{ alignItems: 'flex-end' }}>
             <div className="col">
-              <label htmlFor="merit-notif-select">Notification</label>
+              <label htmlFor="merit-notif-select">Select Commission Notification</label>
               <select
                 id="merit-notif-select"
                 value={meritNotifId}
@@ -563,36 +545,40 @@ export default function OfficerPage() {
                 onClick={handleGenerateMerit}
                 disabled={meritLoading}
               >
-                {meritLoading ? 'Generating...' : 'Generate merit list'}
+                {meritLoading ? 'Computing Rankings...' : 'Generate Official Merit List'}
               </button>
             </div>
           </div>
 
-          {meritError && <p className="error mt-8">{meritError}</p>}
-          {meritMsg && <p className="mt-8">{meritMsg}</p>}
+          {meritError && <div className="error mt-16">{meritError}</div>}
+          {meritMsg && <div className="success mt-16">{meritMsg}</div>}
 
           {rankedList.length > 0 && (
-            <div className="table-wrap mt-16">
+            <div className="table-wrap mt-24">
               <table>
                 <thead>
                   <tr>
-                    <th>Rank</th>
-                    <th>Candidate name</th>
-                    <th>Application ID</th>
-                    <th>Composite score</th>
-                    <th>Selected</th>
+                    <th>Rank Order</th>
+                    <th>Candidate Name</th>
+                    <th>Application Ref</th>
+                    <th>Composite Score</th>
+                    <th>Selection Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rankedList.map((c) => (
                     <tr key={c.application_id} className={c.is_selected ? 'merit-selected' : ''}>
-                      <td><strong>{c.rank}</strong></td>
+                      <td><strong>Rank #{c.rank}</strong></td>
                       <td>{c.full_name}</td>
-                      <td>{c.application_id}</td>
-                      <td>{c.score}</td>
+                      <td>#{c.application_id}</td>
+                      <td><strong>{c.score.toFixed(2)}</strong></td>
                       <td>
-                        <span className={c.is_selected ? 'eligible' : 'rejected'}>
-                          {c.is_selected ? 'Yes' : 'No'}
+                        <span
+                          className={`status-pill ${
+                            c.is_selected ? 'status-selected' : 'status-rejected'
+                          }`}
+                        >
+                          {c.is_selected ? 'Selected (Commissioned)' : 'Not Selected (Reserve)'}
                         </span>
                       </td>
                     </tr>

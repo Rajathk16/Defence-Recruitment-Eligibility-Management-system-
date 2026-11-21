@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { supabase, envConfigured } from '@/lib/supabase';
 import OfficerNav from '@/components/OfficerNav';
 import NotificationsTable, { NotificationRow } from '@/components/NotificationsTable';
 import { useRole } from '@/lib/useRole';
@@ -42,41 +41,32 @@ export default function OfficerNotificationPage() {
   const formRef = useRef<HTMLDivElement>(null);
 
   async function loadData() {
-    if (!envConfigured) {
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     setError(null);
-
-    const [notifRes, branchRes] = await Promise.all([
-      supabase
-        .from('notifications')
-        .select('*, branches(name), eligibility_rules(*)')
-        .order('id', { ascending: true }),
-      supabase.from('branches').select('id, code, name').order('id'),
-    ]);
-
-    if (notifRes.error) {
-      setError(notifRes.error.message);
-    } else {
-      setNotifications((notifRes.data as unknown as NotificationRow[]) ?? []);
-    }
-
-    if (branchRes.data) {
-      setBranches(branchRes.data);
-      if (branchRes.data.length > 0 && !branchId) {
-        setBranchId(String(branchRes.data[0].id));
+    try {
+      const res = await fetch('/api/officer/notifications');
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to load notifications data.');
       }
-    }
 
-    setLoading(false);
+      setNotifications((data.notifications as NotificationRow[]) ?? []);
+      setBranches((data.branches as Branch[]) ?? []);
+      if (data.branches && data.branches.length > 0 && !branchId) {
+        setBranchId(String(data.branches[0].id));
+      }
+    } catch (err: any) {
+      setError(err.message || 'Error fetching notifications.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
     if (authorized) {
       loadData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorized]);
 
   if (!authorized) return null;
@@ -115,9 +105,8 @@ export default function OfficerNotificationPage() {
     setFormError(null);
     setFormSuccess(null);
 
-    // Scroll to form
     if (formRef.current) {
-      formRef.current.scrollIntoView();
+      formRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }
 
@@ -127,7 +116,7 @@ export default function OfficerNotificationPage() {
     setFormSuccess(null);
 
     if (!branchId) {
-      setFormError('Please select a branch.');
+      setFormError('Please select a service branch.');
       return;
     }
 
@@ -135,66 +124,57 @@ export default function OfficerNotificationPage() {
     try {
       if (editingId) {
         // Update mode
-        const { error: notifErr } = await supabase
-          .from('notifications')
-          .update({
+        const res = await fetch('/api/officer/notifications', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: editingId,
             title: title.trim(),
             vacancies: parseInt(vacancies, 10),
-            cutoff_date: cutoffDate,
-            last_date: lastDate,
-          })
-          .eq('id', editingId);
+            cutoffDate,
+            lastDate,
+            minAge,
+            maxAge,
+            minHeightCm,
+            minPercentage,
+            unmarriedOnly,
+          }),
+        });
 
-        if (notifErr) throw notifErr;
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to update notification.');
+        }
 
-        const { error: ruleErr } = await supabase
-          .from('eligibility_rules')
-          .upsert({
-            notification_id: editingId,
-            min_age: parseFloat(minAge),
-            max_age: parseFloat(maxAge),
-            min_height_cm: parseFloat(minHeightCm),
-            min_percentage: parseFloat(minPercentage),
-            unmarried_only: unmarriedOnly,
-          });
-
-        if (ruleErr) throw ruleErr;
-
-        setFormSuccess('Notification updated successfully.');
+        setFormSuccess('Notification and eligibility rules updated successfully.');
         resetForm();
         loadData();
       } else {
         // Insert mode
-        const { data: notifData, error: notifErr } = await supabase
-          .from('notifications')
-          .insert({
-            notification_number: notificationNumber.trim(),
-            branch_id: parseInt(branchId, 10),
+        const res = await fetch('/api/officer/notifications', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            notificationNumber: notificationNumber.trim(),
+            branchId: parseInt(branchId, 10),
             title: title.trim(),
             vacancies: parseInt(vacancies, 10),
-            cutoff_date: cutoffDate,
-            last_date: lastDate,
-          })
-          .select('id')
-          .single();
+            cutoffDate,
+            lastDate,
+            minAge,
+            maxAge,
+            minHeightCm,
+            minPercentage,
+            unmarriedOnly,
+          }),
+        });
 
-        if (notifErr) throw notifErr;
-        const newId = notifData.id;
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to create notification.');
+        }
 
-        const { error: ruleErr } = await supabase
-          .from('eligibility_rules')
-          .insert({
-            notification_id: newId,
-            min_age: parseFloat(minAge),
-            max_age: parseFloat(maxAge),
-            min_height_cm: parseFloat(minHeightCm),
-            min_percentage: parseFloat(minPercentage),
-            unmarried_only: unmarriedOnly,
-          });
-
-        if (ruleErr) throw ruleErr;
-
-        setFormSuccess('Notification and eligibility rules created successfully.');
+        setFormSuccess('New recruitment notification and eligibility rules created successfully.');
         resetForm();
         loadData();
       }
@@ -209,20 +189,26 @@ export default function OfficerNotificationPage() {
     <>
       <OfficerNav />
       <div className="container page">
-        <h1>Notifications Management</h1>
-        <p className="page-desc">View, create, and update recruitment notifications and eligibility rules.</p>
-
-        {!envConfigured && (
-          <p className="error">
-            Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local to use this application.
+        <div className="page-header">
+          <h1>Commission Notifications Management</h1>
+          <p className="page-desc">
+            View, draft, publish, and update recruitment entries, vacancy quotas, and eligibility rules.
           </p>
-        )}
+        </div>
 
-        <div className="section">
-          <h2>Active notifications</h2>
-          {loading && <p>Loading...</p>}
-          {error && <p className="error">{error}</p>}
-          {!loading && !error && (
+        {error && <div className="error mb-16">{error}</div>}
+
+        {/* Section 1: Active Notifications Table */}
+        <div className="panel panel-accent">
+          <div className="panel-header">
+            <span className="panel-title">Active Commission Notifications</span>
+          </div>
+
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '24px', color: 'var(--c-text-muted)' }}>
+              Loading active notifications...
+            </div>
+          ) : (
             <NotificationsTable
               notifications={notifications}
               canEdit={true}
@@ -231,12 +217,30 @@ export default function OfficerNotificationPage() {
           )}
         </div>
 
-        <div className="section" ref={formRef}>
-          <h2>{editingId ? `Edit notification (#${editingId})` : 'Add notification'}</h2>
+        {/* Section 2: Add / Edit Form */}
+        <div className="panel panel-accent" ref={formRef}>
+          <div className="panel-header">
+            <span className="panel-title">
+              {editingId ? `Edit Notification Reference (#${editingId})` : 'Publish New Commission Notification'}
+            </span>
+            {editingId && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={resetForm}
+              >
+                Cancel Edit Mode
+              </button>
+            )}
+          </div>
+
           <form onSubmit={handleSubmit}>
+            <h3 style={{ fontSize: '1rem', marginBottom: '14px' }}>1. Entry Details</h3>
             <div className="row">
               <div className="col">
-                <label htmlFor="notif-number">Notification number</label>
+                <label htmlFor="notif-number">
+                  Notification Number <span className="required-star">*</span>
+                </label>
                 <input
                   id="notif-number"
                   type="text"
@@ -248,7 +252,9 @@ export default function OfficerNotificationPage() {
                 />
               </div>
               <div className="col">
-                <label htmlFor="branch-select">Branch</label>
+                <label htmlFor="branch-select">
+                  Service Branch <span className="required-star">*</span>
+                </label>
                 <select
                   id="branch-select"
                   disabled={editingId !== null}
@@ -263,21 +269,25 @@ export default function OfficerNotificationPage() {
                 </select>
               </div>
               <div className="col">
-                <label htmlFor="notif-title">Title</label>
+                <label htmlFor="notif-title">
+                  Entry / Course Title <span className="required-star">*</span>
+                </label>
                 <input
                   id="notif-title"
                   type="text"
                   required
-                  placeholder="Course or Entry Title"
+                  placeholder="e.g. National Defence Academy Course 155"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                 />
               </div>
             </div>
 
-            <div className="row">
+            <div className="row" style={{ marginTop: '12px' }}>
               <div className="col">
-                <label htmlFor="vacancies">Vacancies</label>
+                <label htmlFor="vacancies">
+                  Sanctioned Vacancies <span className="required-star">*</span>
+                </label>
                 <input
                   id="vacancies"
                   type="number"
@@ -289,7 +299,9 @@ export default function OfficerNotificationPage() {
                 />
               </div>
               <div className="col">
-                <label htmlFor="cutoff-date">Cutoff date (for age)</label>
+                <label htmlFor="cutoff-date">
+                  Age Cutoff Date <span className="required-star">*</span>
+                </label>
                 <input
                   id="cutoff-date"
                   type="date"
@@ -299,7 +311,9 @@ export default function OfficerNotificationPage() {
                 />
               </div>
               <div className="col">
-                <label htmlFor="last-date">Last date to apply</label>
+                <label htmlFor="last-date">
+                  Last Date to Apply <span className="required-star">*</span>
+                </label>
                 <input
                   id="last-date"
                   type="date"
@@ -310,10 +324,14 @@ export default function OfficerNotificationPage() {
               </div>
             </div>
 
-            <h3 className="mt-16">Eligibility criteria</h3>
+            <h3 style={{ fontSize: '1rem', marginTop: '24px', marginBottom: '14px' }}>
+              2. Eligibility Rules (Automated Screening Criteria)
+            </h3>
             <div className="row">
               <div className="col">
-                <label htmlFor="min-age">Min age (years)</label>
+                <label htmlFor="min-age">
+                  Min Age (Years) <span className="required-star">*</span>
+                </label>
                 <input
                   id="min-age"
                   type="number"
@@ -325,7 +343,9 @@ export default function OfficerNotificationPage() {
                 />
               </div>
               <div className="col">
-                <label htmlFor="max-age">Max age (years)</label>
+                <label htmlFor="max-age">
+                  Max Age (Years) <span className="required-star">*</span>
+                </label>
                 <input
                   id="max-age"
                   type="number"
@@ -337,7 +357,9 @@ export default function OfficerNotificationPage() {
                 />
               </div>
               <div className="col">
-                <label htmlFor="min-height">Min height (cm)</label>
+                <label htmlFor="min-height">
+                  Min Height (cm) <span className="required-star">*</span>
+                </label>
                 <input
                   id="min-height"
                   type="number"
@@ -349,7 +371,9 @@ export default function OfficerNotificationPage() {
                 />
               </div>
               <div className="col">
-                <label htmlFor="min-pct">Min percentage (%)</label>
+                <label htmlFor="min-pct">
+                  Min Percentage (%) <span className="required-star">*</span>
+                </label>
                 <input
                   id="min-pct"
                   type="number"
@@ -362,35 +386,33 @@ export default function OfficerNotificationPage() {
               </div>
             </div>
 
-            <div className="form-group" style={{ marginTop: '12px' }}>
+            <div style={{ marginTop: '16px' }}>
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                 <input
                   type="checkbox"
+                  style={{ width: 'auto' }}
                   checked={unmarriedOnly}
                   onChange={(e) => setUnmarriedOnly(e.target.checked)}
-                  style={{ width: 'auto' }}
                 />
-                <span>Unmarried candidates only</span>
+                <span>Mandatory Unmarried Status Requirement</span>
               </label>
             </div>
 
-            <div className="mt-16" style={{ display: 'flex', gap: '12px' }}>
+            <div className="mt-24">
               <button type="submit" className="btn btn-primary" disabled={submitting}>
-                {submitting ? 'Saving...' : editingId ? 'Update notification' : 'Add notification'}
+                {submitting
+                  ? 'Saving Records...'
+                  : editingId
+                  ? 'Update Notification & Rules'
+                  : 'Publish Commission Notification'}
               </button>
-              {editingId && (
-                <button type="button" className="btn btn-secondary" onClick={resetForm}>
-                  Cancel edit
-                </button>
-              )}
             </div>
 
-            {formError && <p className="error mt-8">{formError}</p>}
-            {formSuccess && <p className="success mt-8">{formSuccess}</p>}
+            {formError && <div className="error mt-16">{formError}</div>}
+            {formSuccess && <div className="success mt-16">{formSuccess}</div>}
           </form>
         </div>
       </div>
     </>
   );
 }
-
