@@ -6,7 +6,7 @@ export interface NotificationRow {
   branch_id: number;
   title: string;
   vacancies: number;
-  cutoff_date: string;
+  cutoff_date?: string;  // BUG-19 FIX: marked optional since it's not displayed in the table
   last_date: string;
   branches?: { name: string } | null;
   eligibility_rules?: {

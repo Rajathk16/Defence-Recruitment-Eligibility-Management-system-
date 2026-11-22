@@ -12,10 +12,11 @@ SELECT * FROM v_application_summary;
 
 -- 3. Trigger demo: Meena applies to CDS. Nobody sets the status by hand.
 --    She is too short, so it comes back REJECTED.
+--    BUG-07 FIX: wrapped in a transaction that is always rolled back so test data never persists.
+BEGIN;
 INSERT INTO applications (candidate_id, notification_id) VALUES (5, 2)
 RETURNING id, status, remarks;
--- clean up so the other queries stay the same
-DELETE FROM applications WHERE candidate_id = 5 AND notification_id = 2;
+ROLLBACK;
 
 -- 4. Merit list with DENSE_RANK (Sneha is missing because she is medically UNFIT)
 SELECT n.notification_number, m.rank_order, p.full_name, m.composite_score, m.is_selected

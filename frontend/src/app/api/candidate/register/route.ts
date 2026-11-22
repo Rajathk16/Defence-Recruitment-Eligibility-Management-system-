@@ -30,6 +30,23 @@ export async function POST(request: Request) {
       );
     }
 
+    // BUG-14 FIX: validate date-of-birth is a real date and within a reasonable age range
+    const dobDate = new Date(dob);
+    if (isNaN(dobDate.getTime())) {
+      return NextResponse.json(
+        { error: 'Date of birth is not a valid date.' },
+        { status: 400 }
+      );
+    }
+    const today = new Date();
+    const ageYears = (today.getTime() - dobDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+    if (ageYears < 10 || ageYears > 60) {
+      return NextResponse.json(
+        { error: 'Date of birth implies an age outside the acceptable range (10–60 years).' },
+        { status: 400 }
+      );
+    }
+
     const height = parseFloat(heightCm);
     const weight = parseFloat(weightKg);
     if (isNaN(height) || height < 130 || height > 230) {
@@ -134,6 +151,9 @@ export async function POST(request: Request) {
       });
 
     if (eduErr) {
+      // BUG-13 FIX: rollback both profile and physical_details if education insert fails
+      await supabase.from('physical_details').delete().eq('candidate_id', candidateId);
+      await supabase.from('profiles').delete().eq('id', candidateId);
       return NextResponse.json(
         { error: 'Education record rejected: ' + eduErr.message },
         { status: 400 }

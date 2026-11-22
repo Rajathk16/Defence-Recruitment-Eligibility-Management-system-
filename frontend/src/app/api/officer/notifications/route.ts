@@ -97,6 +97,22 @@ export async function POST(request: Request) {
       );
     }
 
+    // BUG-08 FIX: validate that minAge < maxAge
+    if (minA >= maxA) {
+      return NextResponse.json(
+        { error: 'Minimum age must be strictly less than maximum age.' },
+        { status: 400 }
+      );
+    }
+
+    // BUG-10 FIX: validate that cutoffDate <= lastDate
+    if (new Date(cutoffDate) > new Date(lastDate)) {
+      return NextResponse.json(
+        { error: 'Age cutoff date must not be after the last application date.' },
+        { status: 400 }
+      );
+    }
+
     if (!envConfigured) {
       return NextResponse.json(
         { error: 'Database environment variables are not configured.' },

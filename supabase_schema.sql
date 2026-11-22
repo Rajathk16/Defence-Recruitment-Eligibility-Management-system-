@@ -36,8 +36,12 @@ CREATE TABLE physical_details (
     weight_kg         NUMERIC(5,1) NOT NULL CHECK (weight_kg BETWEEN 35 AND 150),
     chest_normal_cm   NUMERIC(5,1),
     chest_expanded_cm NUMERIC(5,1),
-    -- our "assertion": expanded chest can never be smaller than normal chest
-    CONSTRAINT chk_chest CHECK (chest_expanded_cm >= chest_normal_cm)
+    -- BUG-05 FIX: NULL-safe chest constraint — only enforces if both values are provided
+    CONSTRAINT chk_chest CHECK (
+        chest_expanded_cm IS NULL OR
+        chest_normal_cm IS NULL OR
+        chest_expanded_cm >= chest_normal_cm
+    )
 );
 
 CREATE TABLE education (
@@ -46,7 +50,9 @@ CREATE TABLE education (
     level        TEXT NOT NULL CHECK (level IN ('10TH', '12TH', 'GRADUATION')),
     board        TEXT NOT NULL,
     year_passed  INT NOT NULL,
-    percentage   NUMERIC(5,2) NOT NULL CHECK (percentage BETWEEN 0 AND 100)
+    percentage   NUMERIC(5,2) NOT NULL CHECK (percentage BETWEEN 0 AND 100),
+    -- BUG-03 FIX: prevent duplicate education records per level per candidate
+    UNIQUE (candidate_id, level)
 );
 
 CREATE TABLE notifications (
@@ -72,7 +78,8 @@ CREATE TABLE eligibility_rules (
 CREATE TABLE applications (
     id              SERIAL PRIMARY KEY,
     candidate_id    INT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-    notification_id INT NOT NULL REFERENCES notifications(id),
+    -- BUG-04 FIX: ON DELETE RESTRICT prevents orphaned applications if a notification is deleted
+    notification_id INT NOT NULL REFERENCES notifications(id) ON DELETE RESTRICT,
     status          TEXT NOT NULL DEFAULT 'SUBMITTED'
                     CHECK (status IN ('SUBMITTED', 'ELIGIBLE', 'REJECTED', 'SELECTED')),
     remarks         TEXT,
@@ -118,7 +125,13 @@ DECLARE
 BEGIN
     SELECT * INTO r FROM eligibility_rules WHERE notification_id = NEW.notification_id;
 
-    SELECT (n.cutoff_date - p.dob) / 365.25, ph.height_cm, p.marital_status
+    -- BUG-01 FIX: raise an error if no eligibility rules are configured for this notification
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'No eligibility rules configured for notification_id=%. Cannot process application.', NEW.notification_id;
+    END IF;
+
+    -- BUG-02 FIX: use AGE() for exact year calculation instead of approximate 365.25 divisor
+    SELECT EXTRACT(YEAR FROM AGE(n.cutoff_date, p.dob)), ph.height_cm, p.marital_status
     INTO v_age, v_height, v_marital
     FROM profiles p
     LEFT JOIN physical_details ph ON ph.candidate_id = p.id
@@ -156,11 +169,12 @@ FOR EACH ROW EXECUTE FUNCTION fn_screen_application();
 
 -- 3. THE ONE VIEW
 
+-- BUG-06 FIX: explicit NUMERIC(5,1) cast for consistent decimal age formatting
 CREATE VIEW v_application_summary AS
 SELECT a.id AS application_id,
        p.full_name,
        n.notification_number,
-       ROUND((n.cutoff_date - p.dob) / 365.25, 1) AS age_at_cutoff,
+       ROUND((n.cutoff_date - p.dob) / 365.25, 1)::NUMERIC(5,1) AS age_at_cutoff,
        a.status,
        a.remarks,
        t.written_marks,

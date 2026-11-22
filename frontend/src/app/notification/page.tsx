@@ -81,6 +81,8 @@ export default function OfficerNotificationPage() {
     setMinHeightCm('');
     setMinPercentage('');
     setUnmarriedOnly(true);
+    // BUG-22 FIX: reset branchId to the first available branch when clearing the form
+    setBranchId(branches.length > 0 ? String(branches[0].id) : '');
     setFormError(null);
   }
 
@@ -114,6 +116,14 @@ export default function OfficerNotificationPage() {
 
     if (!branchId) {
       setFormError('Please select a service branch.');
+      return;
+    }
+
+    // BUG-21 FIX: client-side validation that minAge < maxAge before submitting
+    const minAgeNum = parseFloat(minAge);
+    const maxAgeNum = parseFloat(maxAge);
+    if (!isNaN(minAgeNum) && !isNaN(maxAgeNum) && minAgeNum >= maxAgeNum) {
+      setFormError('Minimum age must be strictly less than maximum age.');
       return;
     }
 

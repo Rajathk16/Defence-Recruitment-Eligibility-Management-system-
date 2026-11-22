@@ -149,8 +149,22 @@ export async function POST(request: Request) {
 
     const appIds = validApplicants.map((v) => v.application_id);
 
-    // Clear old merit list records for these applications
-    await supabase.from('merit_list').delete().in('application_id', appIds);
+    // BUG-16 FIX: use a sequential approach with error recovery to maximize consistency.
+    // Note: Supabase JS client does not support multi-statement transactions directly.
+    // For true atomicity, consider a Supabase RPC/stored procedure in production.
+
+    // Step 1: Clear old merit list records for these applications
+    const { error: deleteErr } = await supabase
+      .from('merit_list')
+      .delete()
+      .in('application_id', appIds);
+
+    if (deleteErr) {
+      return NextResponse.json(
+        { error: 'Failed to clear old merit list: ' + deleteErr.message },
+        { status: 500 }
+      );
+    }
 
     // Insert new merit rows
     const meritRows = validApplicants.map((v) => ({
@@ -168,7 +182,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Update application statuses based on selection
+    // Step 3: Update application statuses based on selection
     const selectedIds = validApplicants
       .filter((v) => v.is_selected)
       .map((v) => v.application_id);

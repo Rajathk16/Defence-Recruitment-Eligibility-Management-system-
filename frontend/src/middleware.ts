@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { verifySession, signSession, getCookieHeader, COOKIE_NAME } from './lib/auth';
+import { verifySession, COOKIE_NAME } from './lib/auth';
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -39,12 +39,12 @@ export async function middleware(request: NextRequest) {
       return NextResponse.next();
     }
 
-    // If no session exists yet, automatically initialize a candidate session
-    // so candidates and new visitors can seamlessly browse applicant features
-    const candidateToken = await signSession({ role: 'candidate' });
-    const response = NextResponse.next();
-    response.headers.set('Set-Cookie', getCookieHeader(candidateToken));
-    return response;
+    // BUG-12 FIX: removed auto-session creation for unauthenticated visitors.
+    // Unauthenticated users are redirected to /register instead of receiving a session cookie.
+    const url = request.nextUrl.clone();
+    url.pathname = '/register';
+    url.searchParams.set('redirect', pathname);
+    return NextResponse.redirect(url);
   }
 
   return NextResponse.next();

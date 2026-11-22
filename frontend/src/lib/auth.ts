@@ -13,11 +13,19 @@ export interface SessionUser {
 }
 
 const COOKIE_NAME = 'drems_session';
-const DEFAULT_SECRET = 'drems-secure-defence-recruitment-secret-key-2026';
 const SESSION_DURATION = 7 * 24 * 60 * 60; // 7 days in seconds
 
+// BUG-11 FIX: removed hardcoded DEFAULT_SECRET; SESSION_SECRET env var is now mandatory.
+// The application will throw a clear error at startup if SESSION_SECRET is not set.
 function getSecretKey(): string {
-  return process.env.SESSION_SECRET || DEFAULT_SECRET;
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) {
+    throw new Error(
+      'SESSION_SECRET environment variable is required but not set. ' +
+      'Please add SESSION_SECRET to your .env.local file.'
+    );
+  }
+  return secret;
 }
 
 // Base64URL helpers

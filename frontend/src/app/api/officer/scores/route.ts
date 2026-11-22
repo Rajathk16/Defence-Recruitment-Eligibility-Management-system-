@@ -46,6 +46,21 @@ export async function POST(request: Request) {
       );
     }
 
+    // BUG-15 FIX: verify the application actually exists before inserting scores
+    // This prevents officers from entering scores for non-existent application IDs.
+    const { data: appExists, error: appCheckErr } = await supabase
+      .from('applications')
+      .select('id')
+      .eq('id', appId)
+      .single();
+
+    if (appCheckErr || !appExists) {
+      return NextResponse.json(
+        { error: `Application ID ${appId} does not exist. Verify the application ID before entering scores.` },
+        { status: 404 }
+      );
+    }
+
     const { error } = await supabase.from('test_scores').upsert({
       application_id: appId,
       written_marks: written,
