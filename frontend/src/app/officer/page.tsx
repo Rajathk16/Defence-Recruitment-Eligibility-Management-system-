@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import OfficerNav from '@/components/OfficerNav';
 import { useRole } from '@/lib/useRole';
 
@@ -21,6 +21,20 @@ interface ApplicationOption {
   id: number;
   candidate_name: string;
   notification_number: string;
+  status?: string;
+}
+
+interface RegisteredProfile {
+  id: number;
+  full_name: string;
+  email: string;
+  state: string;
+  education?: Array<{ level: string; percentage: number }>;
+  applications?: Array<{
+    id: number;
+    status: string;
+    notifications?: { notification_number: string } | Array<{ notification_number: string }>;
+  }>;
 }
 
 interface NotificationItem {
@@ -60,9 +74,17 @@ export default function OfficerPage() {
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
+  // All registered profiles (including candidates who haven't applied yet)
+  const [registeredProfiles, setRegisteredProfiles] = useState<RegisteredProfile[]>([]);
+  const [showAllProfiles, setShowAllProfiles] = useState(false);
+
   // Application options for score & medical forms
   const [appOptions, setAppOptions] = useState<ApplicationOption[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+
+  // Refs for smooth scrolling
+  const scoresFormRef = useRef<HTMLDivElement>(null);
+  const medicalFormRef = useRef<HTMLDivElement>(null);
 
   // Test scores form
   const [scoreAppId, setScoreAppId] = useState('');
@@ -103,6 +125,7 @@ export default function OfficerPage() {
 
       setSummary(data.summary ?? []);
       setAppOptions(data.appOptions ?? []);
+      setRegisteredProfiles(data.registeredProfiles ?? []);
       if (data.appOptions?.length > 0 && !scoreAppId) {
         setScoreAppId(String(data.appOptions[0].id));
       }
@@ -129,6 +152,24 @@ export default function OfficerPage() {
   }, [authorized]);
 
   if (!authorized) return null;
+
+  function handleSelectForScores(appId: number) {
+    setScoreAppId(String(appId));
+    setScoreSuccess(null);
+    setScoreError(null);
+    if (scoresFormRef.current) {
+      scoresFormRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }
+
+  function handleSelectForMedical(appId: number) {
+    setMedAppId(String(appId));
+    setMedSuccess(null);
+    setMedError(null);
+    if (medicalFormRef.current) {
+      medicalFormRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }
 
   async function handleSaveScores(e: React.FormEvent) {
     e.preventDefault();
@@ -294,20 +335,21 @@ export default function OfficerPage() {
                     <th>PFT</th>
                     <th>Interview</th>
                     <th>Medical Status</th>
+                    <th style={{ textAlign: 'center' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {summary.length === 0 ? (
                     <tr>
-                      <td colSpan={10} style={{ textAlign: 'center', padding: '24px', color: 'var(--c-text-muted)' }}>
-                        No application records found.
+                      <td colSpan={11} style={{ textAlign: 'center', padding: '24px', color: 'var(--c-text-muted)' }}>
+                        No application records found. Candidates must apply for an entry to appear here.
                       </td>
                     </tr>
                   ) : (
                     summary.map((row) => (
                       <tr key={row.application_id}>
                         <td><strong>#{row.application_id}</strong></td>
-                        <td>{row.full_name}</td>
+                        <td><strong>{row.full_name}</strong></td>
                         <td>{row.notification_number}</td>
                         <td>{row.age_at_cutoff} yrs</td>
                         <td>
@@ -328,6 +370,26 @@ export default function OfficerPage() {
                             '-'
                           )}
                         </td>
+                        <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: '3px 8px', fontSize: '12px', marginRight: '4px' }}
+                            onClick={() => handleSelectForScores(row.application_id)}
+                            title="Enter test scores for this application"
+                          >
+                            Scores
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: '3px 8px', fontSize: '12px' }}
+                            onClick={() => handleSelectForMedical(row.application_id)}
+                            title="Record medical examination for this application"
+                          >
+                            Medical
+                          </button>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -337,8 +399,106 @@ export default function OfficerPage() {
           )}
         </div>
 
-        {/* Section 2: Enter Test Scores */}
+        {/* Section 1.5: Registered Candidate Profiles Directory */}
         <div className="panel panel-accent">
+          <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <span className="panel-title">All Registered Profiles Directory</span>
+              <span style={{ marginLeft: '10px', fontSize: '13px', color: 'var(--c-text-muted)' }}>
+                ({registeredProfiles.length} registered candidate{registeredProfiles.length === 1 ? '' : 's'})
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setShowAllProfiles(!showAllProfiles)}
+            >
+              {showAllProfiles ? 'Hide Profiles Directory' : 'Show All Registered Candidates'}
+            </button>
+          </div>
+
+          <div style={{ fontSize: '13px', color: 'var(--c-text-muted)', marginBottom: showAllProfiles ? '16px' : '0' }}>
+            💡 <strong>Note:</strong> A registered candidate appears in the scoring queue only <em>after</em> submitting an application to a specific commission notification.
+          </div>
+
+          {showAllProfiles && (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Candidate ID</th>
+                    <th>Full Name</th>
+                    <th>Registered Email</th>
+                    <th>State</th>
+                    <th>Qualification</th>
+                    <th>Commission Application Status</th>
+                    <th style={{ textAlign: 'center' }}>Quick Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {registeredProfiles.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} style={{ textAlign: 'center', padding: '20px', color: 'var(--c-text-muted)' }}>
+                        No candidate profiles registered yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    registeredProfiles.map((p) => {
+                      const hasApplied = p.applications && p.applications.length > 0;
+                      const app = hasApplied ? p.applications![0] : null;
+                      const notifNum = app?.notifications
+                        ? Array.isArray(app.notifications)
+                          ? app.notifications[0]?.notification_number
+                          : app.notifications.notification_number
+                        : '';
+                      const latestEdu = p.education && p.education.length > 0 ? p.education[0] : null;
+
+                      return (
+                        <tr key={p.id}>
+                          <td><strong>#{p.id}</strong></td>
+                          <td><strong>{p.full_name}</strong></td>
+                          <td>{p.email}</td>
+                          <td>{p.state}</td>
+                          <td>{latestEdu ? `${latestEdu.level} (${latestEdu.percentage}%)` : '-'}</td>
+                          <td>
+                            {hasApplied && app ? (
+                              <span className={`status-pill ${getStatusBadgeClass(app.status)}`}>
+                                Applied: App #{app.id} ({notifNum}) — {app.status}
+                              </span>
+                            ) : (
+                              <span className="status-pill status-pending">
+                                ⚠️ Registered Only (Has Not Applied Yet)
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            {hasApplied && app ? (
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: '3px 8px', fontSize: '12px' }}
+                                onClick={() => handleSelectForScores(app.id)}
+                              >
+                                Enter Scores
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: '12px', color: 'var(--c-text-muted)' }}>
+                                Awaiting Application
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Section 2: Enter Test Scores */}
+        <div className="panel panel-accent" ref={scoresFormRef}>
           <div className="panel-header">
             <span className="panel-title">Record Examination & Interview Scores</span>
           </div>
@@ -354,11 +514,15 @@ export default function OfficerPage() {
                 value={scoreAppId}
                 onChange={(e) => setScoreAppId(e.target.value)}
               >
-                {appOptions.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    App #{a.id} - {a.candidate_name} ({a.notification_number})
-                  </option>
-                ))}
+                {appOptions.length === 0 ? (
+                  <option value="">No candidate applications submitted yet</option>
+                ) : (
+                  appOptions.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      App #{a.id} — {a.candidate_name} ({a.notification_number}) [{a.status ?? 'SUBMITTED'}]
+                    </option>
+                  ))
+                )}
               </select>
             </div>
 
@@ -425,7 +589,7 @@ export default function OfficerPage() {
         </div>
 
         {/* Section 3: Record Medical Exams */}
-        <div className="panel panel-accent">
+        <div className="panel panel-accent" ref={medicalFormRef}>
           <div className="panel-header">
             <span className="panel-title">Record Medical Fitness Examination</span>
           </div>
@@ -441,11 +605,15 @@ export default function OfficerPage() {
                 value={medAppId}
                 onChange={(e) => setMedAppId(e.target.value)}
               >
-                {appOptions.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    App #{a.id} - {a.candidate_name} ({a.notification_number})
-                  </option>
-                ))}
+                {appOptions.length === 0 ? (
+                  <option value="">No candidate applications submitted yet</option>
+                ) : (
+                  appOptions.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      App #{a.id} — {a.candidate_name} ({a.notification_number}) [{a.status ?? 'SUBMITTED'}]
+                    </option>
+                  ))
+                )}
               </select>
             </div>
 

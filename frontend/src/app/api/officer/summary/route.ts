@@ -27,15 +27,19 @@ export async function GET(request: Request) {
       });
     }
 
-    const [sumRes, appsRes, notifRes] = await Promise.all([
+    const [sumRes, appsRes, notifRes, profRes] = await Promise.all([
       supabase.from('v_application_summary').select('*').order('application_id'),
       supabase
         .from('applications')
-        .select('id, profiles(full_name), notifications(notification_number)')
+        .select('id, status, profiles(full_name), notifications(notification_number)')
         .order('id'),
       supabase
         .from('notifications')
         .select('id, notification_number, title, vacancies')
+        .order('id'),
+      supabase
+        .from('profiles')
+        .select('id, full_name, email, state, education(level, percentage), applications(id, status, notifications(notification_number))')
         .order('id'),
     ]);
 
@@ -45,18 +49,22 @@ export async function GET(request: Request) {
 
     const mappedApps = (appsRes.data ?? []).map((a: any) => ({
       id: a.id,
-      candidate_name: Array.isArray(a.profiles)
-        ? a.profiles[0]?.full_name
-        : a.profiles?.full_name,
-      notification_number: Array.isArray(a.notifications)
-        ? a.notifications[0]?.notification_number
-        : a.notifications?.notification_number,
+      status: a.status,
+      candidate_name:
+        (Array.isArray(a.profiles)
+          ? a.profiles[0]?.full_name
+          : a.profiles?.full_name) || `Applicant #${a.id}`,
+      notification_number:
+        (Array.isArray(a.notifications)
+          ? a.notifications[0]?.notification_number
+          : a.notifications?.notification_number) || 'N/A',
     }));
 
     return NextResponse.json({
       summary: sumRes.data ?? [],
       appOptions: mappedApps,
       notifications: notifRes.data ?? [],
+      registeredProfiles: profRes.data ?? [],
     });
   } catch (err: any) {
     return NextResponse.json(
