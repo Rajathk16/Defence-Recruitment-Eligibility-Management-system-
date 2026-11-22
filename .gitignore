@@ -1,4 +1,22 @@
-.env.local
+# Project files not to push
+PROJECT_SUMMARY.md
+# BUG-18 FIX: seed_data.sql is now tracked in git so new developers can set up test data
+# seed_data.sql
+
+# Environment variables
+# Ignore all environment files
+.env
+.env.*
+**/.env
+**/.env.*
+
+# Dependencies
 node_modules/
+
+# Next.js generated files
 .next/
 out/
+dist/
+
+# TypeScript generated files
+*.tsbuildinfo
