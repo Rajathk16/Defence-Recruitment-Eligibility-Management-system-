@@ -725,14 +725,21 @@ The repository includes `test_queries.sql`, designed for demonstration and viva 
 
 ## 17. Security, Access Control, and Data Validation Analysis
 
-| Security / Validation Area | Status in Repository | Verified Implementation Mechanism | Architectural Limitations & Risks |
+## 17. Security, Access Control, and Data Validation Analysis
+
+| Security / Validation Area | Status | Verified Implementation | Notes |
 |---|---|---|---|
-| **Role-Based Access Control (RBAC)** | Partially Implemented | Client-side routing checks via `useRole` hook (`useRole.ts`) inspecting `sessionStorage.getItem('role')`. Officer role requires entering a 4-digit code (`OFFICER_CODE = '4827'`). | **Insecure for Production:** Anyone can set `sessionStorage.setItem('role', 'officer')` directly in the browser console. No cryptographic sessions or JSON Web Tokens (JWT) are verified by the backend. |
-| **Row Level Security (RLS)** | Explicitly Disabled | Verified in `supabase_schema.sql` (Line 3): `Row level security is left off because this is only a course demo.` | Because RLS is disabled, any client using the public Supabase anonymous key has direct read, write, and delete permissions over PostgreSQL tables via the PostgREST API. |
-| **SQL Injection Prevention** | Enforced | Client uses `@supabase/supabase-js`, which translates method chains into parameterized queries via PostgREST. The PL/pgSQL function uses static SQL syntax. | No raw string concatenations exist in queries, providing effective protection against standard SQL injection vectors. |
-| **Database Constraints & Bounds** | Enforced | Explicit `CHECK` constraints on gender, marital status, roles, height ($130-230\text{ cm}$), weight ($35-150\text{ kg}$), chest expansion, percentages ($0-100$), marks, and vacancies ($> 0$). | Provides strong domain protection; invalid inputs that bypass frontend forms are rejected by PostgreSQL. |
-| **Secret Management** | Standard Practice | Environment variables (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`) are loaded via `.env.local`. | Keys prefixed with `NEXT_PUBLIC_` are bundled into client-side JavaScript. This is standard for Supabase public anonymous keys, but requires RLS to ensure security. |
-| **Duplicate Application Prevention**| Enforced | Unique composite index `UNIQUE (candidate_id, notification_id)` in the `applications` table. | Handles duplicate attempts cleanly; the frontend catches PostgreSQL error code `23505` to display clear user error messages. |
+| **Role-Based Access Control (RBAC)** | ✅ Implemented | Custom HMAC-SHA256 JWT stored in `HttpOnly` cookie (`drems_session`). Officer role requires 4-digit `OFFICER_ACCESS_CODE` env var. JWT verified server-side on every API call in `lib/auth.ts`. | Secure against browser-console spoofing since session is `HttpOnly`. |
+| **JWT Secret Management** | ✅ Fixed (BUG-11) | `SESSION_SECRET` env var is now **mandatory**. `getSecretKey()` throws an error at startup if missing — no hardcoded fallback remains. | Documented in `.env.example` with generation instructions. |
+| **Middleware Route Protection** | ✅ Fixed (BUG-12) | Unauthenticated users visiting candidate routes are redirected to `/register` instead of receiving an auto-generated session cookie. | Prevents anonymous session creation. |
+| **Row Level Security (RLS)** | Explicitly Disabled | Verified in `supabase_schema.sql` (Line 3): *"Row level security is left off because this is only a course demo."* | RLS commented-out policies are present in schema for future activation. |
+| **SQL Injection Prevention** | ✅ Enforced | All DB calls use Supabase JS client parameterized queries via PostgREST. PL/pgSQL trigger uses static SQL. No raw string concatenation exists. | Effective protection against standard SQL injection vectors. |
+| **Database Constraints & Bounds** | ✅ Fixed (BUG-05) | `chk_chest` constraint updated to be NULL-safe; enforces `chest_expanded_cm >= chest_normal_cm` only when both values are non-NULL. Height (130–230 cm), weight (35–150 kg), percentage (0–100), vacancies (>0) all enforced at DB level. | Invalid inputs rejected by PostgreSQL regardless of frontend bypass. |
+| **Input Validation — Notifications API** | ✅ Fixed (BUG-08, 10) | Added `minAge < maxAge` validation and `cutoffDate ≤ lastDate` ordering validation in POST handler. | Returns HTTP 400 with descriptive error messages. |
+| **DOB Validation — Registration API** | ✅ Fixed (BUG-14) | `dob` field validated as a parseable date; age must be between 10 and 60 years. | Prevents invalid DOB strings from reaching the trigger's age calculation. |
+| **Application Existence Check — Scores API** | ✅ Fixed (BUG-15) | Scores API verifies `application_id` exists in the database before inserting test scores. | Returns HTTP 404 for non-existent application IDs. |
+| **Registration Rollback** | ✅ Fixed (BUG-13) | If education insert fails, both `physical_details` and `profiles` are now rolled back, preventing orphaned records. | Note: not a true DB transaction — uses sequential delete calls. True atomicity requires Supabase RPC. |
+| **Duplicate Application Prevention** | ✅ Enforced | `UNIQUE (candidate_id, notification_id)` in `applications` table. | Frontend catches PostgreSQL error code `23505`. |
 
 ---
 
@@ -793,37 +800,55 @@ The repository includes `test_queries.sql`, designed for demonstration and viva 
 
 ## 20. Discrepancies and Inconsistencies Found in Repository
 
-1. **Missing `seed_data.sql` File:**
-   - *Observation:* The project `README.md` (Lines 10–12) states: `"2. (Optional) Run seed_data.sql in the Supabase SQL editor. This inserts demo notifications, candidate profiles, test scores, and medical exams."`
-   - *Fact:* A file system search confirms that **`seed_data.sql` does not exist in the repository.** Only `supabase_schema.sql` and `test_queries.sql` are present. (The `.gitignore` file also specifically ignores `seed_data.sql`).
-2. **Accidental Root `package.json`:**
-   - *Observation:* The root directory contains a `package.json` file with only `"dependencies": { "i": "^0.3.7" }`.
-   - *Fact:* This is a common artifact of running `npm i` without package arguments in an uninitialized root directory. The actual project dependencies reside entirely within `frontend/package.json`.
-3. **Hardcoded Officer Code vs. Profile Roles:**
-   - *Observation:* The database defines a `role` column in the `profiles` table (`CHECK (role IN ('CANDIDATE', 'OFFICER'))`).
-   - *Fact:* The frontend does not query this column to authorize officers. Instead, officer access is granted solely by matching the static string `'4827'` in `frontend/src/lib/config.ts`.
+> [!NOTE]
+> The bugs and loopholes identified during the initial audit have been fully resolved as of commit `1f5fedf` on 2026-11-22. See `problems.md` for the complete list. The items below reflect the state **after fixes**.
+
+1. **`seed_data.sql` — Now Added:** Previously missing and gitignored. `seed_data.sql` with 5 fictional candidates, 2 notifications, eligibility rules, applications, test scores, and medical exams is now present in the repository and tracked by git.
+2. **Accidental Root `package.json`:** The root directory contains a `package.json` with only `"dependencies": { "i": "^0.3.7" }` — a common artifact of running `npm i` without arguments in an uninitialized directory. The actual project dependencies reside entirely within `frontend/package.json`.
+3. **Hardcoded Officer Code vs. Profile Roles:** The database defines a `role` column in `profiles` (`CHECK (role IN ('CANDIDATE', 'OFFICER'))`), but officer authorization is handled by the `OFFICER_ACCESS_CODE` environment variable checked in the API login route — not by querying this column.
 
 ---
 
 ## 21. Limitations and Future Scope
 
-### 21.1 Existing Limitations
-- **Absence of Real Authentication:** Role gating relies on `sessionStorage` and a static passcode rather than secure authentication protocols like Supabase Auth or OAuth2 with signed JWTs.
-- **Disabled Row Level Security (RLS):** With RLS turned off, database tables are exposed to modification by any client with access to the public anonymous key.
-- **Client-Side Merit List Computation:** The merit list and dense ranking algorithms are executed in client-side TypeScript rather than inside a database stored procedure or transaction block, risking concurrency issues if multiple officers run the selection simultaneously.
-- **Single-Table File Upload Omission:** Physical documents (matriculation certificates, medical reports, ID cards) cannot be uploaded as binary attachments or stored in storage buckets; only alphanumeric text records are supported.
+### 21.1 Remaining Limitations (Post Bug-Fix)
+- **Supabase Client Cannot Use Transactions:** The registration flow and merit list generation perform sequential DB calls without true ACID transactions. Full atomicity requires migrating these operations to PostgreSQL stored procedures (Supabase RPC).
+- **Disabled Row Level Security (RLS):** With RLS turned off, database tables are directly accessible to any client holding the public anonymous key. The commented-out RLS policies in `supabase_schema.sql` provide a blueprint but are not yet enabled.
+- **Single Education Record Per Registration:** The registration form allows entry of only one education record. Candidates with multiple qualifications (10th, 12th, Graduation) must be manually added via direct SQL.
+- **No Document / File Upload:** Physical certificates, medical scans, and identity documents cannot be uploaded — only text data is stored.
+- **BUG-09 — cutoff_date = last_date:** Since the cutoff date UI field was removed, all new notifications use `last_date` as the age cutoff date. In real Defence recruitment, these two dates often differ.
 
 ### 21.2 Future Scope & Potential Enhancements
-- **Migrate Merit Processing to PostgreSQL Stored Procedures:** Encapsulate weighted scoring, dense ranking, and application status updates inside an atomic PostgreSQL function (`fn_generate_merit_list(p_notification_id INT)`).
-- **Implement Secure Authentication & RLS Policies:** Integrate Supabase Auth to assign authenticated JWT tokens and enable PostgreSQL Row Level Security (RLS) policies, restricting candidates to their own records while granting officers broader administrative access.
-- **Biometric and Document Storage Integration:** Connect Supabase Storage buckets to verify candidate certificates and medical scans.
-- **Automated Automated Test Suites:** Implement unit and integration tests using Jest and Playwright to validate end-to-end user workflows and form submissions.
+- **True Atomic Transactions:** Migrate registration and merit list generation to PostgreSQL stored procedures using `fn_register_candidate(...)` and `fn_generate_merit_list(p_notification_id INT)` to guarantee full ACID compliance.
+- **Enable Supabase Auth & RLS:** Integrate Supabase Auth (email/OTP or OAuth) to issue proper JWTs and enable Row Level Security policies, restricting candidates to their own records.
+- **Multi-Education Entry:** Allow candidates to submit all qualification levels (10th, 12th, Graduation) during registration with the trigger picking the most recent.
+- **Document Storage:** Connect Supabase Storage buckets for certificate and medical report uploads with file validation.
+- **Automated Test Suites:** Add Jest and Playwright tests covering API validation, trigger behavior, and UI workflows.
+- **Restore Cutoff Date Field:** Re-expose the age cutoff date as an optional form field (defaulting to `last_date`) to support notifications where the two dates differ.
 
 ---
 
 ## 22. Conclusion
 
-The **Defence Recruitment and Eligibility Management System (DREMS)** provides an effective, working implementation of a database-centric recruitment management platform. By embedding eligibility screening rules directly into PostgreSQL via a PL/pgSQL `BEFORE INSERT` trigger, the system guarantees domain integrity and provides instant feedback to candidates. The combination of normalized relational structures, analytical SQL views, domain check constraints, and a responsive Next.js frontend delivers a cohesive architecture well-suited for academic demonstration and mini-project reporting. Implementing secure authentication, database-side merit compilation, and Row Level Security will further transition the system toward an enterprise-ready standard.
+The **Defence Recruitment and Eligibility Management System (DREMS)** provides a database-centric, full-stack recruitment management platform with rigorous domain integrity enforcement. By embedding eligibility screening rules inside a PostgreSQL PL/pgSQL `BEFORE INSERT` trigger, the system guarantees immediate, objective candidate feedback. The normalized relational schema (10 tables, 1 trigger, 1 view), combined with server-side API routes secured by HMAC-SHA256 JWT authentication and a responsive Next.js 14 frontend, forms a cohesive architecture suitable for academic demonstration.
+
+**Post-audit improvements applied (2026-11-22):**
+- Trigger now rejects applications when no eligibility rules are configured (BUG-01)
+- Exact age calculation using `AGE()` function instead of approximate 365.25 divisor (BUG-02)
+- Unique constraint added to `education(candidate_id, level)` (BUG-03)
+- `ON DELETE RESTRICT` added to `applications.notification_id` FK (BUG-04)
+- NULL-safe chest constraint (BUG-05), explicit age cast in view (BUG-06)
+- Test queries wrapped in atomic `BEGIN/ROLLBACK` (BUG-07)
+- `minAge < maxAge` and `cutoffDate ≤ lastDate` validations in API (BUG-08, 10)
+- Hardcoded JWT secret removed — `SESSION_SECRET` now mandatory (BUG-11)
+- Middleware no longer auto-creates anonymous sessions (BUG-12)
+- Full rollback on registration failure (BUG-13), DOB validation added (BUG-14)
+- Application existence check before scoring (BUG-15), merit delete now error-checked (BUG-16)
+- `.env.example` documents all required variables (BUG-17)
+- `seed_data.sql` added to repository (BUG-18)
+- Frontend hygiene: optional interface field, client-side age validation, branch reset (BUG-19, 21, 22)
+
+Enabling Row Level Security, migrating multi-step operations to true PostgreSQL transactions, and integrating Supabase Auth will further advance DREMS toward production readiness.
 
 ---
 
