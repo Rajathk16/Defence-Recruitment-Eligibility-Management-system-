@@ -199,7 +199,25 @@ INSERT INTO branches (code, name) VALUES
     ('COAST_GUARD', 'Indian Coast Guard'); -- 4
 
 
--- 5. ROW LEVEL SECURITY (RLS) & RBAC POLICIES (OPTIONAL / PRODUCTION)
+-- 5. DISABLE ROW LEVEL SECURITY ON ALL TABLES
+-- This is a course/demo project. RLS is explicitly disabled so the anon key
+-- can read and write all tables. In production, enable RLS and define policies.
+-- Without these statements, Supabase enables RLS by default on new tables
+-- and blocks all anon-key writes with "violates row-level security policy".
+
+ALTER TABLE branches          DISABLE ROW LEVEL SECURITY;
+ALTER TABLE profiles          DISABLE ROW LEVEL SECURITY;
+ALTER TABLE physical_details  DISABLE ROW LEVEL SECURITY;
+ALTER TABLE education         DISABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications     DISABLE ROW LEVEL SECURITY;
+ALTER TABLE eligibility_rules DISABLE ROW LEVEL SECURITY;
+ALTER TABLE applications      DISABLE ROW LEVEL SECURITY;
+ALTER TABLE test_scores       DISABLE ROW LEVEL SECURITY;
+ALTER TABLE medical_exams     DISABLE ROW LEVEL SECURITY;
+ALTER TABLE merit_list        DISABLE ROW LEVEL SECURITY;
+
+
+-- 6. ROW LEVEL SECURITY (RLS) & RBAC POLICIES (OPTIONAL / PRODUCTION)
 -- Enables strict database-level authorization matching application RBAC:
 -- - CANDIDATE: Access only their own profiles, physical details, education, and applications.
 -- - OFFICER / ADMIN: Full administrative access to notifications, scores, medical exams, and merit list.
