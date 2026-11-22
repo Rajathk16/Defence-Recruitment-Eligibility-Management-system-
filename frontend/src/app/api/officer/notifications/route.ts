@@ -176,7 +176,6 @@ export async function PUT(request: Request) {
       id,
       title,
       vacancies,
-      cutoffDate,
       lastDate,
       minAge,
       maxAge,
@@ -206,7 +205,6 @@ export async function PUT(request: Request) {
       .update({
         title: String(title).trim(),
         vacancies: parseInt(vacancies, 10),
-        cutoff_date: cutoffDate,
         last_date: lastDate,
       })
       .eq('id', notifId);

@@ -38,7 +38,6 @@ export default function NotificationsTable({
             <th>Service Branch</th>
             <th>Entry / Course Title</th>
             <th>Vacancies</th>
-            <th>Age Cutoff Date</th>
             <th>Last Date</th>
             <th>Age Limit</th>
             <th>Min Height</th>
@@ -50,7 +49,7 @@ export default function NotificationsTable({
         <tbody>
           {notifications.length === 0 ? (
             <tr>
-              <td colSpan={canEdit ? 11 : 10} style={{ textAlign: 'center', padding: '24px', color: 'var(--c-text-muted)' }}>
+              <td colSpan={canEdit ? 10 : 9} style={{ textAlign: 'center', padding: '24px', color: 'var(--c-text-muted)' }}>
                 No active recruitment notifications found in the database.
               </td>
             </tr>
@@ -71,7 +70,6 @@ export default function NotificationsTable({
                       {n.vacancies}
                     </span>
                   </td>
-                  <td>{n.cutoff_date}</td>
                   <td>{n.last_date}</td>
                   <td>{r ? `${r.min_age} - ${r.max_age} yrs` : '-'}</td>
                   <td>{r ? `${r.min_height_cm} cm` : '-'}</td>

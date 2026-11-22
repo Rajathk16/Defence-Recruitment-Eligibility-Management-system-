@@ -25,7 +25,6 @@ export default function OfficerNotificationPage() {
   const [branchId, setBranchId] = useState('');
   const [title, setTitle] = useState('');
   const [vacancies, setVacancies] = useState('');
-  const [cutoffDate, setCutoffDate] = useState('');
   const [lastDate, setLastDate] = useState('');
 
   const [minAge, setMinAge] = useState('');
@@ -76,7 +75,6 @@ export default function OfficerNotificationPage() {
     setNotificationNumber('');
     setTitle('');
     setVacancies('');
-    setCutoffDate('');
     setLastDate('');
     setMinAge('');
     setMaxAge('');
@@ -92,7 +90,6 @@ export default function OfficerNotificationPage() {
     setBranchId(String(n.branch_id));
     setTitle(n.title);
     setVacancies(String(n.vacancies));
-    setCutoffDate(n.cutoff_date);
     setLastDate(n.last_date);
 
     const r = n.eligibility_rules;
@@ -131,7 +128,6 @@ export default function OfficerNotificationPage() {
             id: editingId,
             title: title.trim(),
             vacancies: parseInt(vacancies, 10),
-            cutoffDate,
             lastDate,
             minAge,
             maxAge,
@@ -159,7 +155,7 @@ export default function OfficerNotificationPage() {
             branchId: parseInt(branchId, 10),
             title: title.trim(),
             vacancies: parseInt(vacancies, 10),
-            cutoffDate,
+            cutoffDate: lastDate,  // cutoff date defaults to last_date
             lastDate,
             minAge,
             maxAge,
@@ -296,18 +292,6 @@ export default function OfficerNotificationPage() {
                   placeholder="e.g. 400"
                   value={vacancies}
                   onChange={(e) => setVacancies(e.target.value)}
-                />
-              </div>
-              <div className="col">
-                <label htmlFor="cutoff-date">
-                  Age Cutoff Date <span className="required-star">*</span>
-                </label>
-                <input
-                  id="cutoff-date"
-                  type="date"
-                  required
-                  value={cutoffDate}
-                  onChange={(e) => setCutoffDate(e.target.value)}
                 />
               </div>
               <div className="col">
